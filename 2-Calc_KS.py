@@ -9,6 +9,8 @@ from scipy.stats import entropy
 from math import log2
 import math
 from math import radians, cos, sin, asin, sqrt
+import os
+from pathlib import Path
 
 def haversine(lon1, lat1, lon2, lat2):
     """
@@ -33,9 +35,10 @@ def kl_divergence(p, q):
 	return sum(p[i] * log2(p[i]/q[i]) for i in range(len(p)))
 
 
+
+
 def hellinger_explicit(p, q):
     """Hellinger distance between two discrete distributions.
-       Same as original version but without list comprehension
     """
     list_of_squares = []
     for p_i, q_i in zip(p, q):
@@ -54,14 +57,15 @@ def hellinger_explicit(p, q):
 
 def process_ks(idat):
     i = pd.to_datetime(idat['timestamp'].iat[0])
-    hdat = dat[(dat['timestamp'] < i ) & (dat['timestamp'] >= i - pd.Timedelta(hours=24*10) )]
     rvs1 = idat['distance'].values
+    hdat = dat[(dat['timestamp'] < i ) & (dat['timestamp'] >= i - pd.Timedelta(hours=24*10) )]
     date_range = pd.to_datetime(hdat.timestamp.unique()).sort_values(ascending=False)
     retdat = pd.DataFrame()
     for j in date_range:
         # Filter last hour
         hdat2 = hdat[hdat.timestamp == j]
         rvs2 = hdat2['distance'].values
+    
         # Calculate KS statistic
         ks_res = stats.ks_2samp(rvs1, rvs2)
         ks_stat = ks_res[0]
@@ -109,26 +113,37 @@ lat2 = 15.709619
 
 dat = pd.read_feather(f"data/Colombia_Reduced_{beg_date}_{end_date}.feather")
 
+# Filter out first time obs because nothing behind
+first_t = dat.timestamp.unique()[0].astype(str)
+dat = dat[dat.timestamp != first_t]
 
+# dat.to_csv(f"data/Colombia_Reduced_{beg_date}_{end_date}.csv", date_format="%Y-%m-%d %H:%M:%S", index=False)
 
-# dat.loc[:, 'timestamp'] = pd.to_datetime(dat.timestamp)
+# ddat = pd.read_csv(f"data/Colombia_Reduced_{beg_date}_{end_date}.csv", parse_dates=True, index_col=False)
 
-# Remove Longbeach
-dat = dat[dat['vessel_A_lat'] <= lat2]
-dat = dat[dat['vessel_A_lat'] >= lat1]
+ 
+# test = ddat[(ddat.timestamp >= "2018-04-01 01:00:00") & (ddat.timestamp <= "2018-04-02 01:00:00")]
+# test.timestamp.unique()
 
-dat = dat[dat['vessel_A_lon'] >= lon1]
-dat = dat[dat['vessel_A_lon'] <= lon2]
-
+# Filter out files already processed
+files = glob.glob('data/daily_ks/*.feather')
+files2 = sorted([Path(x).stem for x in files])
+ddat = dat[-dat.timestamp.isin(files2)]
 
 # Group by
-gb = dat.groupby('timestamp')
-timest = [gb.get_group(x) for x in gb.groups]
+if len(ddat) != 0:
+    gb = ddat.groupby('timestamp')
+    gb_i = [gb.get_group(x) for x in gb.groups]
+    # gb.groups.keys()
+    # gb_i[24*23].timestamp.unique()
 
-# Parallel Process
-pool = multiprocessing.Pool(50)
-pool.map(process_ks, timest)
-pool.close()
+    # Parallel Process
+    pool = multiprocessing.Pool(6)
+    pool.map(process_ks, gb_i)
+    pool.close()
+else:
+    print("All files processed")
+
 
 
 # Combine processed files
@@ -144,4 +159,6 @@ for file in files:
 
 
 mdat = mdat.reset_index(drop=True)
-mdat.to_feather(f"data/SanDiego_KSDaily_{beg_date}_{end_date}.feather")
+mdat.to_feather(f"data/Colombia_KSDaily_{beg_date}_{end_date}.feather")
+
+

@@ -65,7 +65,6 @@ mdat_timestamp = mdat_timestamp.strftime("%Y-%m-%d %H:%M:%S")
 mdat.loc[:, 'timestamp'] = mdat_timestamp
 mdat.loc[:, 'timestamp'] = pd.to_datetime(mdat.timestamp, format="%Y-%m-%d %H:%M:%S")
 
-
 # Save Processed
 mdat = mdat.reset_index(drop=True)
 mdat.to_feather(f"data/Colombia_Processed_{beg_date}_{end_date}.feather")
